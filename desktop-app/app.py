@@ -13,8 +13,10 @@ from ttkthemes import ThemedTk
 
 import db
 from todo_ui import TodoUI
+from gemini_ui import GeminiUI
 
 def load_env(env_path=".env"):
+    print("Loading environment variables...")
     env_vars = {}
     if os.path.exists(env_path):
         with open(env_path, 'r') as f:
@@ -23,14 +25,17 @@ def load_env(env_path=".env"):
                 if line and not line.startswith('#'):
                     key, value = line.split('=', 1)
                     env_vars[key] = value
+    print("Environment variables loaded.")
     return env_vars
 
 ENV_VARS = load_env()
 SERVER_URL = ENV_VARS.get("SERVER_URL", "http://localhost:5001/transcribe")
+GEMINI_API_KEY = ENV_VARS.get("GEMINI_API_KEY")
 
 class VoiceTranscriber(ThemedTk):
     def __init__(self):
         super().__init__()
+        print("Initializing VoiceTranscriber application...")
         self.set_theme("arc")
         self.title("Wispr Clone")
         self.geometry("800x600")
@@ -38,7 +43,12 @@ class VoiceTranscriber(ThemedTk):
         self.grid_rowconfigure(0, weight=1)
         self.grid_columnconfigure(1, weight=1)
 
+        # --- Gemini UI ---
+        print("Initializing Gemini UI...")
+        self.gemini_ui = GeminiUI(self)
+
         # --- Navbar ---
+        print("Creating Navbar...")
         self.navbar_frame = ttk.Frame(self, width=150, relief=tk.RAISED, borderwidth=1)
         self.navbar_frame.grid(row=0, column=0, sticky="nswe")
 
@@ -52,6 +62,7 @@ class VoiceTranscriber(ThemedTk):
         self.todo_button.pack(pady=10, padx=10, fill="x")
 
         # --- Content Frames ---
+        print("Creating Content Frames...")
         self.content_frame = ttk.Frame(self)
         self.content_frame.grid(row=0, column=1, sticky="nswe")
         self.content_frame.grid_rowconfigure(0, weight=1)
@@ -65,15 +76,20 @@ class VoiceTranscriber(ThemedTk):
             frame.grid(row=0, column=0, sticky="nswe")
 
         # --- App State ---
+        print("Initializing App State...")
         self.recording = False
+        self.gemini_recording = False
         self.audio_queue = queue.Queue()
         self.keyboard_controller = keyboard.Controller()
+        print("Starting keyboard listener...")
         self.listener = keyboard.Listener(on_press=self.on_press, on_release=self.on_release)
         self.listener.start()
 
         self.show_home()
+        print("Application initialized.")
 
     def create_home_frame(self):
+        print("Creating Home Frame...")
         frame = ttk.Frame(self.content_frame)
         frame.grid_rowconfigure(1, weight=1)
         frame.grid_columnconfigure(0, weight=1)
@@ -88,7 +104,7 @@ class VoiceTranscriber(ThemedTk):
         self.last_transcriptions_frame.grid(row=1, column=0, padx=10, pady=10, sticky="nswe")
         
         self.status_var = tk.StringVar()
-        self.status_var.set("Press and hold Left Option to start recording...")
+        self.status_var.set("Press and hold Left Option to type | Right Option for AI")
         status_label = ttk.Label(self.last_transcriptions_frame, textvariable=self.status_var, wraplength=380)
         status_label.pack(pady=5)
 
@@ -99,23 +115,28 @@ class VoiceTranscriber(ThemedTk):
         return frame
 
     def create_history_frame(self):
+        print("Creating History Frame...")
         frame = ttk.Frame(self.content_frame)
         self.history_text_area = tk.Text(frame, wrap="word", state="disabled")
         self.history_text_area.pack(expand=True, fill="both", padx=10, pady=10)
         return frame
 
     def show_home(self):
+        print("Showing Home Frame...")
         self.update_home_tab()
         self.home_frame.tkraise()
 
     def show_history(self):
+        print("Showing History Frame...")
         self.update_history_tab()
         self.history_frame.tkraise()
 
     def show_todo(self):
+        print("Showing Todo Frame...")
         self.todo_frame.tkraise()
 
     def update_home_tab(self):
+        print("Updating Home Tab...")
         total_words = db.get_total_word_count()
         self.total_words_label.config(text=f"Total Words: {total_words}")
         
@@ -131,8 +152,10 @@ class VoiceTranscriber(ThemedTk):
             word_count = entry["word_count"]
             
             ttk.Label(self.last_transcriptions_frame, text=f"[{timestamp}] ({word_count} words): {text}", wraplength=700, anchor="w", justify="left").pack(padx=5, pady=2, fill="x")
+        print("Home Tab updated.")
 
     def update_history_tab(self):
+        print("Updating History Tab...")
         self.history_text_area.config(state="normal")
         self.history_text_area.delete(1.0, tk.END)
 
@@ -164,67 +187,143 @@ class VoiceTranscriber(ThemedTk):
         
         self.history_text_area.config(state="disabled")
         self.history_text_area.tag_configure("header", font=("Arial", 12, "bold"))
+        print("History Tab updated.")
 
     def on_press(self, key):
         if key == keyboard.Key.alt_l and not self.recording:
+            print("Left Alt pressed. Starting recording for typing...")
             self.recording = True
-            self.status_var.set("Recording...")
+            self.status_var.set("Recording for typing...")
             self.transcription_var.set("")
             self.audio_queue = queue.Queue()
-            self.recording_thread = threading.Thread(target=self.record_audio)
+            self.recording_thread = threading.Thread(target=self.record_audio, args=(False,))
+            self.recording_thread.start()
+        elif key == keyboard.Key.alt_r and not self.gemini_recording:
+            print("Right Alt pressed. Starting recording for Gemini...")
+            self.gemini_recording = True
+            self.status_var.set("Recording for Gemini...")
+            self.transcription_var.set("")
+            self.audio_queue = queue.Queue()
+            self.recording_thread = threading.Thread(target=self.record_audio, args=(True,))
             self.recording_thread.start()
 
     def on_release(self, key):
         if key == keyboard.Key.alt_l and self.recording:
+            print("Left Alt released. Stopping recording for typing...")
             self.recording = False
-            self.status_var.set("Transcribing...")
+            self.status_var.set("Transcribing for typing...")
+        elif key == keyboard.Key.alt_r and self.gemini_recording:
+            print("Right Alt released. Stopping recording for Gemini...")
+            self.gemini_recording = False
+            self.status_var.set("Transcribing for Gemini...")
 
-    def record_audio(self):
+    def record_audio(self, is_gemini):
+        print(f"Recording audio for {'Gemini' if is_gemini else 'typing'}...")
         with sd.InputStream(samplerate=16000, channels=1, callback=self.audio_callback):
-            while self.recording:
-                sd.sleep(100)
-        self.process_audio()
+            if is_gemini:
+                while self.gemini_recording:
+                    sd.sleep(100)
+            else:
+                while self.recording:
+                    sd.sleep(100)
+        print("Recording stopped. Processing audio...")
+        self.process_audio(is_gemini)
 
     def audio_callback(self, indata, frames, time, status):
         if status:
-            print(status)
+            print(f"Audio callback status: {status}")
         self.audio_queue.put(indata.copy())
 
-    def process_audio(self):
+    def process_audio(self, is_gemini):
+        print("Processing audio data...")
         audio_data = []
         while not self.audio_queue.empty():
             audio_data.append(self.audio_queue.get())
         
         if not audio_data:
-            self.status_var.set("No audio recorded. Press and hold Left Option...")
+            print("No audio data recorded.")
+            self.status_var.set("No audio recorded. Press and hold an Option key...")
             return
 
         import numpy as np
         audio_data = np.concatenate(audio_data, axis=0)
         sf.write("temp_audio.wav", audio_data, 16000)
-        self.transcribe_audio()
+        print("Audio saved to temp_audio.wav. Transcribing...")
+        self.transcribe_audio(is_gemini)
 
-    def transcribe_audio(self):
+    def transcribe_audio(self, is_gemini):
+        print(f"Transcribing audio for {'Gemini' if is_gemini else 'typing'}...")
         try:
             with open("temp_audio.wav", 'rb') as f:
                 files = {'audio': f}
                 response = requests.post(SERVER_URL, files=files)
+                print(f"Transcription server response: {response.status_code}")
                 if response.status_code == 200:
                     result = response.json()
                     transcribed_text = result.get('transcription', '')
+                    print(f"Transcription result: {transcribed_text}")
                     self.transcription_var.set(transcribed_text)
                     if transcribed_text:
-                        self.keyboard_controller.type(transcribed_text)
-                        db.add_transcription(transcribed_text)
-                        self.update_home_tab()
+                        if is_gemini:
+                            self.gemini_ui.show_question(transcribed_text)
+                            print("Sending transcription to Gemini...")
+                            self.get_gemini_response(transcribed_text)
+                        else:
+                            print("Typing out transcription...")
+                            self.keyboard_controller.type(transcribed_text)
+                            db.add_transcription(transcribed_text)
+                            self.update_home_tab()
                 else:
+                    print(f"Transcription error: {response.text}")
                     self.status_var.set(f"Error: {response.status_code} - {response.text}")
         except Exception as e:
+            print(f"An exception occurred during transcription: {e}")
             self.status_var.set(f"Error: {e}")
         finally:
-            self.status_var.set("Press and hold Left Option to start recording...")
+            self.status_var.set("Press and hold Left Option to type | Right Option for AI")
+
+    def get_gemini_response(self, text):
+        print("Getting Gemini response...")
+        if not GEMINI_API_KEY:
+            print("GEMINI_API_KEY not set.")
+            self.gemini_ui.show_response("GEMINI_API_KEY not set.")
+            return
+
+        self.status_var.set("Getting response from Gemini...")
+        
+        headers = {
+            "x-goog-api-key": GEMINI_API_KEY,
+            "Content-Type": "application/json",
+        }
+        data = {
+            "contents": [{"parts": [{"text": text}]}],
+            "generationConfig": {"thinkingConfig": {"thinkingBudget": 0}},
+        }
+        
+        try:
+            response = requests.post(
+                "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent",
+                headers=headers,
+                json=data
+            )
+            print(f"Gemini API response: {response.status_code}")
+            if response.status_code == 200:
+                result = response.json()
+                gemini_response = result['candidates'][0]['content']['parts'][0]['text']
+                print(f"Gemini response: {gemini_response}")
+                self.gemini_ui.show_response(gemini_response)
+            else:
+                print(f"Gemini API error: {response.text}")
+                self.gemini_ui.show_response(f"Error: {response.status_code} - {response.text}")
+        except Exception as e:
+            print(f"An exception occurred getting Gemini response: {e}")
+            self.gemini_ui.show_response(f"Error: {e}")
+        finally:
+            self.status_var.set("Press and hold Left Option to type | Right Option for AI")
 
 
 if __name__ == "__main__":
+    print("Starting application...")
     app = VoiceTranscriber()
     app.mainloop()
+    print("Application closed.")
