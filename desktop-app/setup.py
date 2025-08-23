@@ -4,7 +4,7 @@ APP = ['app.py']
 DATA_FILES = []
 OPTIONS = {
     'argv_emulation': True,
-    'packages': ['pynput', 'sounddevice', 'soundfile', 'requests', 'numpy'],
+    'packages': ['pynput', 'sounddevice', 'soundfile', 'requests', 'numpy', 'ttkthemes'],
 }
 
 setup(
