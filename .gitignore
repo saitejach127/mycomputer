@@ -2,5 +2,7 @@ desktop-app/.env
 desktop-app/.eggs
 desktop-app/.mypy_cache
 desktop-app/.pytest_cache
-desktop-app/temp_audio.wav
+*.wav
 server/.env
+*__pycache__/
+desktop-app/*.json
