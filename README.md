@@ -7,17 +7,55 @@ This project is a desktop application that allows you to record your voice with 
 - [Docker](https://www.docker.com/get-started)
 - [Conda](https://docs.conda.io/en/latest/miniconda.html) (Miniconda or Anaconda)
 
+---
+
 ## Setup and Running the Application
 
-Follow these steps to set up and run the application.
+### 1. Authentication Setup (Google Credentials)
 
-### 1. Start the Transcription Server
+To use the Google integration features (Calendar, Drive, etc.), you need to generate your own `client_secret.json` file.
 
-The server runs inside a Docker container.
+**Steps to Generate Credentials:**
+
+1.  **Go to the Google Cloud Console**: Navigate to [https://console.cloud.google.com/](https://console.cloud.google.com/).
+2.  **Create a New Project**: If you don't have one already, create a new project.
+3.  **Enable APIs**: Go to the "APIs & Services" dashboard. Click "+ ENABLE APIS AND SERVICES" and enable the following APIs:
+    *   Google Calendar API
+    *   Google Drive API
+    *   Gmail API
+4.  **Configure OAuth Consent Screen**: Go to the "OAuth consent screen" tab. Choose "External" and create a consent screen. You only need to provide an app name, user support email, and developer contact information.
+5.  **Create Credentials**: 
+    *   Go to the "Credentials" tab and click "+ CREATE CREDENTIALS" -> "OAuth client ID".
+    *   Select **Web Application** as the application type.
+    *   Give it a name (e.g., "MyComputer Auth Server").
+    *   Under **Authorized redirect URIs**, click "ADD URI" and enter exactly: `http://localhost:5003/oauth2callback`
+6.  **Download JSON**: Click "CREATE". A window will pop up with your Client ID and Secret. Click **DOWNLOAD JSON** to get your `client_secret.json` file.
+
+### 2. Start the Authentication Server
+
+The auth server runs inside a Docker container and handles the Google login flow.
+
+**Setup and Run:**
+
+1.  **Place Credentials**: Move the `client_secret.json` file you just downloaded into the `auth-server/` directory.
+2.  **Build the Docker Image**: Navigate to the `auth-server` directory and run:
+    ```bash
+    cd auth-server
+    docker build -t mycomputer-auth-server .
+    ```
+3.  **Run the Docker Container**:
+    ```bash
+    docker run -p 5003:5003 -v "$(pwd)/google_credentials:/app/google_credentials" --name my-auth-server mycomputer-auth-server
+    ```
+    This will start the server and persist your login credentials on your local machine.
+
+### 3. Start the Transcription Server
+
+The transcription server also runs inside a Docker container.
 
 **Build the Docker Image:**
 
-Navigate to the `server` directory and run the following command to build the Docker image:
+Navigate to the `server` directory and run:
 
 ```bash
 cd server
@@ -26,53 +64,42 @@ docker build -t wispr-flow-clone-server .
 
 **Run the Docker Container:**
 
-Run the following command to start the server. You can specify the `MODEL_SIZE` environment variable to choose the Whisper model you want to use (e.g., `tiny`, `base`, `small`, `medium`, `large`). The default is `base.en`.
-
 ```bash
 docker run -d -p 5001:5000 -e MODEL_SIZE=base wispr-flow-clone-server
 ```
 
-### 2. Set Up the Desktop Application
-
-The desktop application is built with Python and Tkinter.
+### 4. Set Up and Run the Desktop Application
 
 **Create the Conda Environment:**
 
-Create a new conda environment for the desktop app:
-
 ```bash
 conda create --name wispr-clone python=3.9 -y
-```
-
-**Activate the Environment:**
-
-Activate the newly created environment:
-
-```bash
 conda activate wispr-clone
 ```
 
 **Install Dependencies:**
 
-Install the required Python packages:
-
-```bash
-pip install pynput sounddevice soundfile requests
-```
-
-### 3. Run the Desktop App
-
-Make sure the server is running first. Then, from the `desktop-app` directory, run the following command to start the application:
-
+Navigate to the `desktop-app` directory and install the required packages:
 ```bash
 cd desktop-app
+pip install -r requirements.txt
+```
+
+**Run the App:**
+
+Make sure both servers are running. Then, from the `desktop-app` directory, run:
+
+```bash
 python app.py
 ```
 
 ## How to Use
 
-1.  Make sure the server and the desktop app are running.
-2.  Click on any text field in any application.
-3.  Press and hold the **Left Option/Alt key** to start recording your voice.
-4.  Release the key to stop recording.
-5.  The transcribed text will appear in the desktop app's window and will be automatically typed into the focused text field.
+1.  Make sure all servers and the desktop app are running.
+2.  In the desktop app, go to the "Integrations" tab and click "Connect with Google".
+3.  Your browser will open. Log in with your Google account and grant the requested permissions.
+4.  Once you see the "Authentication Successful!" message, you can close the browser tab.
+5.  Click on any text field in any application.
+6.  Press and hold the **Left Option/Alt key** to start recording your voice.
+7.  Release the key to stop recording.
+8.  The transcribed text will be automatically typed into the focused text field.
