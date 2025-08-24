@@ -6,3 +6,6 @@ desktop-app/.pytest_cache
 server/.env
 *__pycache__/
 desktop-app/*.json
+auth-server/*.json
+*.pkl
+auth-server/google_credentials/*.json

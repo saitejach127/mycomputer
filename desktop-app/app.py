@@ -14,6 +14,7 @@ from ttkthemes import ThemedTk
 import db
 from todo_ui import TodoUI
 from gemini_ui import GeminiUI
+from integrations_ui import IntegrationsUI
 
 def load_env(env_path=".env"):
     print("Loading environment variables...")
@@ -61,6 +62,9 @@ class VoiceTranscriber(ThemedTk):
         self.todo_button = ttk.Button(self.navbar_frame, text="Todo", command=self.show_todo)
         self.todo_button.pack(pady=10, padx=10, fill="x")
 
+        self.integrations_button = ttk.Button(self.navbar_frame, text="Integrations", command=self.show_integrations)
+        self.integrations_button.pack(pady=10, padx=10, fill="x")
+
         # --- Content Frames ---
         print("Creating Content Frames...")
         self.content_frame = ttk.Frame(self)
@@ -71,8 +75,9 @@ class VoiceTranscriber(ThemedTk):
         self.home_frame = self.create_home_frame()
         self.history_frame = self.create_history_frame()
         self.todo_frame = TodoUI(self.content_frame)
+        self.integrations_frame = IntegrationsUI(self.content_frame)
 
-        for frame in (self.home_frame, self.history_frame, self.todo_frame):
+        for frame in (self.home_frame, self.history_frame, self.todo_frame, self.integrations_frame):
             frame.grid(row=0, column=0, sticky="nswe")
 
         # --- App State ---
@@ -134,6 +139,10 @@ class VoiceTranscriber(ThemedTk):
     def show_todo(self):
         print("Showing Todo Frame...")
         self.todo_frame.tkraise()
+
+    def show_integrations(self):
+        print("Showing Integrations Frame...")
+        self.integrations_frame.tkraise()
 
     def update_home_tab(self):
         print("Updating Home Tab...")
