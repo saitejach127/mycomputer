@@ -5,6 +5,7 @@ desktop-app/.pytest_cache
 *.wav
 server/.env
 *__pycache__/
+desktop-app/*/*.json
 desktop-app/*.json
 auth-server/*.json
 *.pkl

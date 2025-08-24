@@ -28,15 +28,10 @@ SCOPES = [
 # The URI for the OAuth 2.0 callback. This must be authorized in the Google Cloud Console.
 REDIRECT_URI = "http://localhost:5003/oauth2callback"
 
-CREDENTIALS_DIR = "google_credentials"
-USER_MAPPING_FILE = os.path.join(CREDENTIALS_DIR, "user_mapping.json")
 
 @app.route('/authorize')
 def authorize():
     """Initiates the OAuth 2.0 authorization flow."""
-    if not os.path.exists(CREDENTIALS_DIR):
-        os.makedirs(CREDENTIALS_DIR)
-
     flow = Flow.from_client_secrets_file(
         CLIENT_SECRETS_FILE,
         scopes=SCOPES,
@@ -45,6 +40,7 @@ def authorize():
 
     authorization_url, state = flow.authorization_url(
         access_type='offline',
+        prompt='consent',
         include_granted_scopes='true'
     )
     
@@ -78,38 +74,24 @@ def oauth2callback():
     email = user_info.get("email")
     name = user_info.get("name", "user")
 
-    if email:
-        # Save the credentials for the user
-        safe_filename = "".join(c for c in email if c.isalnum() or c in "._-") + ".pkl"
-        token_file = os.path.join(CREDENTIALS_DIR, safe_filename)
+    # Manually construct a dictionary from the credentials object that includes the id_token.
+    creds_dict = {
+        'token': credentials.token,
+        'refresh_token': credentials.refresh_token,
+        'token_uri': credentials.token_uri,
+        'client_id': credentials.client_id,
+        'client_secret': credentials.client_secret,
+        'scopes': credentials.scopes,
+        'id_token': flow.oauth2session.token['id_token']
+    }
+    creds_json_string = json.dumps(creds_dict)
 
-        with open(token_file, "wb") as token:
-            pickle.dump(credentials, token)
-
-        update_user_mapping(email, safe_filename)
-        
-        return f"""
-        <h1>Authentication Successful!</h1>
-        <p>Hello, {name} ({email}).</p>
-        <p>You can now close this window and return to the application.</p>
-        """
-    else:
-        return "<h1>Error: Could not retrieve user email.</h1>"
-
-def update_user_mapping(email, pkl_filename):
-    """Updates the JSON file that maps emails to their credential files."""
-    mapping = {}
-    if os.path.exists(USER_MAPPING_FILE):
-        with open(USER_MAPPING_FILE, "r") as f:
-            try:
-                mapping = json.load(f)
-            except json.JSONDecodeError:
-                pass # File is empty or corrupt
-
-    mapping[email] = pkl_filename
-    
-    with open(USER_MAPPING_FILE, "w") as f:
-        json.dump(mapping, f, indent=4)
+    # Display the credentials to the user to copy
+    return (f'<h1>Authentication Successful!</h1>'
+            f'<p>Hello, {name} ({email}).</p>'
+            f'<p>Please copy the text below and paste it into the desktop application:</p>'
+            f'<textarea rows="10" cols="80" readonly>{creds_json_string}</textarea>'
+            f'<p>You can now close this window.</p>')
 
 if __name__ == '__main__':
     # It's recommended to use a production-ready WSGI server instead of the development server.
