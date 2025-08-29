@@ -7,7 +7,7 @@ class GeminiUI(tk.Toplevel):
         self.title("Gemini Response")
         self.geometry("400x300+1200+30")  # Position top-right
 
-        self.attributes("-alpha", 0.9)
+        self.attributes("-alpha", 0.5)
         self.attributes("-topmost", True)
 
         self.grid_rowconfigure(1, weight=1)
