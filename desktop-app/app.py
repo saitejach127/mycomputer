@@ -15,6 +15,7 @@ import db
 from todo_ui import TodoUI
 from gemini_ui import GeminiUI
 from integrations_ui import IntegrationsUI
+from gemini import get_gemini_response as get_gemini_response_from_api
 
 def load_env(env_path=".env"):
     print("Loading environment variables...")
@@ -276,7 +277,8 @@ class VoiceTranscriber(ThemedTk):
                         if is_gemini:
                             self.gemini_ui.show_question(transcribed_text)
                             print("Sending transcription to Gemini...")
-                            self.get_gemini_response(transcribed_text)
+                            gemini_response = get_gemini_response_from_api(transcribed_text, GEMINI_API_KEY)
+                            self.gemini_ui.show_response(gemini_response)
                         else:
                             print("Typing out transcription...")
                             self.keyboard_controller.type(transcribed_text)
@@ -288,45 +290,6 @@ class VoiceTranscriber(ThemedTk):
         except Exception as e:
             print(f"An exception occurred during transcription: {e}")
             self.status_var.set(f"Error: {e}")
-        finally:
-            self.status_var.set("Press and hold Left Option to type | Right Option for AI")
-
-    def get_gemini_response(self, text):
-        print("Getting Gemini response...")
-        if not GEMINI_API_KEY:
-            print("GEMINI_API_KEY not set.")
-            self.gemini_ui.show_response("GEMINI_API_KEY not set.")
-            return
-
-        self.status_var.set("Getting response from Gemini...")
-        
-        headers = {
-            "x-goog-api-key": GEMINI_API_KEY,
-            "Content-Type": "application/json",
-        }
-        data = {
-            "contents": [{"parts": [{"text": text}]}],
-            "generationConfig": {"thinkingConfig": {"thinkingBudget": 0}},
-        }
-        
-        try:
-            response = requests.post(
-                "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent",
-                headers=headers,
-                json=data
-            )
-            print(f"Gemini API response: {response.status_code}")
-            if response.status_code == 200:
-                result = response.json()
-                gemini_response = result['candidates'][0]['content']['parts'][0]['text']
-                print(f"Gemini response: {gemini_response}")
-                self.gemini_ui.show_response(gemini_response)
-            else:
-                print(f"Gemini API error: {response.text}")
-                self.gemini_ui.show_response(f"Error: {response.status_code} - {response.text}")
-        except Exception as e:
-            print(f"An exception occurred getting Gemini response: {e}")
-            self.gemini_ui.show_response(f"Error: {e}")
         finally:
             self.status_var.set("Press and hold Left Option to type | Right Option for AI")
 
