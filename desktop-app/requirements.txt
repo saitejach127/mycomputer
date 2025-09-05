@@ -4,3 +4,6 @@ soundfile
 requests
 numpy
 ttkthemes
+mcp
+google-api-python-client
+google-auth-oauthlib

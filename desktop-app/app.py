@@ -16,6 +16,9 @@ from todo_ui import TodoUI
 from gemini_ui import GeminiUI
 from integrations_ui import IntegrationsUI
 from gemini import get_gemini_response as get_gemini_response_from_api
+from mcp_impl import MCPClientManager
+import asyncio
+import json
 
 def load_env(env_path=".env"):
     print("Loading environment variables...")
@@ -63,6 +66,9 @@ class VoiceTranscriber(ThemedTk):
         self.todo_button = ttk.Button(self.navbar_frame, text="Todo", command=self.show_todo)
         self.todo_button.pack(pady=10, padx=10, fill="x")
 
+        self.mcp_button = ttk.Button(self.navbar_frame, text="MCP", command=self.show_mcp)
+        self.mcp_button.pack(pady=10, padx=10, fill="x")
+
         self.integrations_button = ttk.Button(self.navbar_frame, text="Integrations", command=self.show_integrations)
         self.integrations_button.pack(pady=10, padx=10, fill="x")
 
@@ -76,9 +82,10 @@ class VoiceTranscriber(ThemedTk):
         self.home_frame = self.create_home_frame()
         self.history_frame = self.create_history_frame()
         self.todo_frame = TodoUI(self.content_frame)
+        self.mcp_frame = self.create_mcp_frame()
         self.integrations_frame = IntegrationsUI(self.content_frame)
 
-        for frame in (self.home_frame, self.history_frame, self.todo_frame, self.integrations_frame):
+        for frame in (self.home_frame, self.history_frame, self.todo_frame, self.mcp_frame, self.integrations_frame):
             frame.grid(row=0, column=0, sticky="nswe")
 
         # --- App State ---
@@ -90,6 +97,20 @@ class VoiceTranscriber(ThemedTk):
         print("Starting keyboard listener...")
         self.listener = keyboard.Listener(on_press=self.on_press, on_release=self.on_release)
         self.listener.start()
+
+        self.mcp_manager = MCPClientManager()
+        self.mcp_tools = None
+
+        def on_closing():
+            print("Stopping MCP sessions...")
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            loop.run_until_complete(self.mcp_manager.stop_sessions())
+            self.destroy()
+
+        self.protocol("WM_DELETE_WINDOW", on_closing)
+
+        self.start_mcp_in_background()
 
         self.show_home()
         print("Application initialized.")
@@ -127,6 +148,44 @@ class VoiceTranscriber(ThemedTk):
         self.history_text_area.pack(expand=True, fill="both", padx=10, pady=10)
         return frame
 
+    def create_mcp_frame(self):
+        print("Creating MCP Frame...")
+        frame = ttk.Frame(self.content_frame)
+        frame.grid_columnconfigure(0, weight=1)
+        frame.grid_rowconfigure(1, weight=1)
+
+        mcp_title = ttk.Label(frame, text="Current MCP Tools", font=("Arial", 24))
+        mcp_title.grid(row=0, column=0, pady=10, columnspan=2)
+
+        # Create a container for the Treeview and scrollbar
+        tree_container = ttk.Frame(frame)
+        tree_container.grid(row=1, column=0, sticky="nswe", padx=10, pady=10)
+        tree_container.grid_columnconfigure(0, weight=1)
+        tree_container.grid_rowconfigure(0, weight=1)
+
+        # Define columns
+        columns = ('server_name', 'tool_name', 'tool_description')
+        self.mcp_tools_tree = ttk.Treeview(tree_container, columns=columns, show='headings')
+
+        # Define headings
+        self.mcp_tools_tree.heading('server_name', text='Server Name')
+        self.mcp_tools_tree.heading('tool_name', text='Tool Name')
+        self.mcp_tools_tree.heading('tool_description', text='Tool Description')
+        
+        # Configure column widths
+        self.mcp_tools_tree.column('server_name', width=120, stretch=tk.NO)
+        self.mcp_tools_tree.column('tool_name', width=150, stretch=tk.NO)
+        self.mcp_tools_tree.column('tool_description', width=400)
+
+        self.mcp_tools_tree.grid(row=0, column=0, sticky="nswe")
+
+        # Add a scrollbar
+        scrollbar = ttk.Scrollbar(tree_container, orient="vertical", command=self.mcp_tools_tree.yview)
+        self.mcp_tools_tree.configure(yscrollcommand=scrollbar.set)
+        scrollbar.grid(row=0, column=1, sticky="ns")
+
+        return frame
+
     def show_home(self):
         print("Showing Home Frame...")
         self.update_home_tab()
@@ -141,9 +200,57 @@ class VoiceTranscriber(ThemedTk):
         print("Showing Todo Frame...")
         self.todo_frame.tkraise()
 
+    def show_mcp(self):
+        print("Showing MCP Frame...")
+        self.render_mcp_tools_ui()
+        self.mcp_frame.tkraise()
+
     def show_integrations(self):
         print("Showing Integrations Frame...")
         self.integrations_frame.tkraise()
+
+    def start_mcp_in_background(self):
+        thread = threading.Thread(target=self._start_mcp_and_load_tools_async)
+        thread.daemon = True
+        thread.start()
+
+    def _start_mcp_and_load_tools_async(self):
+        print("Starting MCP servers and loading tools in background...")
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        
+        loop.run_until_complete(self.mcp_manager.start_sessions())
+        tools = loop.run_until_complete(self.mcp_manager.list_all_tools())
+        
+        print("--- All MCP Tools Loaded ---")
+        print(json.dumps(tools, indent=2))
+        print("--------------------------")
+
+        self.mcp_tools = tools
+
+    def render_mcp_tools_ui(self):
+        # Clear existing items in the tree
+        for item in self.mcp_tools_tree.get_children():
+            self.mcp_tools_tree.delete(item)
+
+        if self.mcp_tools is None:
+            # The table is empty while loading, which is fine.
+            # We could insert a "Loading..." item if desired.
+            pass
+
+        elif not self.mcp_tools:
+            self.mcp_tools_tree.insert(' ', tk.END, values=("N/A", "N/A", "No tools found."))
+
+        else:
+            for server_name, tools in self.mcp_tools.items():
+                if tools:
+                    for tool in tools:
+                        values = (server_name, tool['name'], tool['description'])
+                        self.mcp_tools_tree.insert('', tk.END, values=values)
+                else:
+                    # Represent servers with no tools
+                    values = (server_name, "N/A", "No tools found for this server.")
+                    self.mcp_tools_tree.insert('', tk.END, values=values)
 
     def update_home_tab(self):
         print("Updating Home Tab...")
