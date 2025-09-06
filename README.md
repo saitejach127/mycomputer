@@ -45,9 +45,9 @@ The auth server runs inside a Docker container and handles the Google login flow
     ```
 3.  **Run the Docker Container**:
     ```bash
-    docker run -p 5003:5003 -v "$(pwd)/google_credentials:/app/google_credentials" --name my-auth-server mycomputer-auth-server
+    docker run -p 5003:5003 --name my-auth-server mycomputer-auth-server
     ```
-    This will start the server and persist your login credentials on your local machine.
+    This will start the server.
 
 ### 3. Start the Transcription Server
 
@@ -85,6 +85,18 @@ cd desktop-app
 pip install -r requirements.txt
 ```
 
+**Create Environment File:**
+
+In the `desktop-app` directory, create a file named `.env` and add the following content:
+
+```
+SERVER_URL="http://localhost:5001/transcribe"
+GEMINI_API_KEY="YOUR_GEMINI_API_KEY"
+USER_EMAIL="your.email@example.com"
+```
+
+Replace `"YOUR_GEMINI_API_KEY"` with your actual Gemini API key, and `"your.email@example.com"` with the email you will use to log in with Google.
+
 **Run the App:**
 
 Make sure both servers are running. Then, from the `desktop-app` directory, run:
@@ -98,8 +110,11 @@ python app.py
 1.  Make sure all servers and the desktop app are running.
 2.  In the desktop app, go to the "Integrations" tab and click "Connect with Google".
 3.  Your browser will open. Log in with your Google account and grant the requested permissions.
-4.  Once you see the "Authentication Successful!" message, you can close the browser tab.
-5.  Click on any text field in any application.
-6.  Press and hold the **Left Option/Alt key** to start recording your voice.
-7.  Release the key to stop recording.
-8.  The transcribed text will be automatically typed into the focused text field.
+4.  Once you see the "Authentication Successful!" message, copy the JSON text displayed on the page.
+5.  Paste the copied text into the text box in the "Integrations" tab of the desktop app and click "Save Credentials".
+6.  Click on any text field in any application.
+7.  Press and hold the **Left Option/Alt key** to start recording your voice.
+8.  Release the key to stop recording.
+9.  The transcribed text will be automatically typed into the focused text field.
+10. Press and hold the **Right Option/Alt key** to start recording your voice for Gemini.
+11. Release the key to stop recording and get a response from Gemini.
