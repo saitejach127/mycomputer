@@ -29,6 +29,14 @@ class GeminiUI(tk.Toplevel):
         answer_text = ttk.Label(self, textvariable=self.answer_var, wraplength=380, font=("Arial", 14), foreground="green")
         answer_text.grid(row=3, column=0, padx=10, pady=5, sticky="nswe")
 
+        self.continue_conversation_var = tk.BooleanVar()
+        self.continue_conversation_check = ttk.Checkbutton(
+            self,
+            text="Continue Conversation",
+            variable=self.continue_conversation_var
+        )
+        self.continue_conversation_check.grid(row=4, column=0, padx=10, pady=10, sticky="w")
+
     def show_question(self, text):
         self.question_var.set(text)
         self.answer_var.set("...") # Clear previous answer and indicate waiting

@@ -1,4 +1,6 @@
 from googleapiclient.discovery import build
+from googleapiclient.http import MediaIoBaseUpload
+import io
 
 def list_drive_files(creds, max_files=10):
     """Lists the last N modified files in the user's Google Drive."""
@@ -52,3 +54,32 @@ def get_files_by_name(creds, filename):
     except Exception as e:
         print(f"An error occurred: {e}")
         return None
+
+def create_file(creds, folder_name, file_name, content=None):
+    """Creates a file in a specified folder in Google Drive, with optional content."""
+    try:
+        service = build('drive', 'v3', credentials=creds)
+
+        # Find the folder ID
+        folder_id = None
+        query = f"name = '{folder_name}' and mimeType = 'application/vnd.google-apps.folder'"
+        results = service.files().list(q=query, pageSize=1, fields="files(id, name)").execute()
+        items = results.get('files', [])
+        if not items:
+            return f"Folder '{folder_name}' not found."
+        folder_id = items[0]['id']
+
+        file_metadata = {
+            'name': file_name,
+            'parents': [folder_id]
+        }
+        
+        media = None
+        if content:
+            media = MediaIoBaseUpload(io.BytesIO(content.encode('utf-8')), mimetype='text/plain', resumable=True)
+        
+        file = service.files().create(body=file_metadata, media_body=media, fields='id').execute()
+        return f"File '{file_name}' created with ID: {file.get('id')}"
+
+    except Exception as e:
+        return f"An error occurred: {e}"

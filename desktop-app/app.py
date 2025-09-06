@@ -36,6 +36,7 @@ def load_env(env_path=".env"):
 ENV_VARS = load_env()
 SERVER_URL = ENV_VARS.get("SERVER_URL", "http://localhost:5001/transcribe")
 GEMINI_API_KEY = ENV_VARS.get("GEMINI_API_KEY")
+USER_EMAIL = ENV_VARS.get("USER_EMAIL")
 
 class VoiceTranscriber(ThemedTk):
     def __init__(self):
@@ -100,6 +101,8 @@ class VoiceTranscriber(ThemedTk):
 
         self.mcp_manager = MCPClientManager()
         self.mcp_tools = None
+        self.conversation_history = None
+        self.stop_recording_event = threading.Event()
 
         def on_closing():
             print("Stopping MCP sessions...")
@@ -313,6 +316,7 @@ class VoiceTranscriber(ThemedTk):
             self.status_var.set("Recording for typing...")
             self.transcription_var.set("")
             self.audio_queue = queue.Queue()
+            self.stop_recording_event.clear()
             self.recording_thread = threading.Thread(target=self.record_audio, args=(False,))
             self.recording_thread.start()
         elif key == keyboard.Key.alt_r and not self.gemini_recording:
@@ -321,30 +325,30 @@ class VoiceTranscriber(ThemedTk):
             self.status_var.set("Recording for Gemini...")
             self.transcription_var.set("")
             self.audio_queue = queue.Queue()
+            self.stop_recording_event.clear()
             self.recording_thread = threading.Thread(target=self.record_audio, args=(True,))
             self.recording_thread.start()
 
     def on_release(self, key):
         if key == keyboard.Key.alt_l and self.recording:
             print("Left Alt released. Stopping recording for typing...")
-            self.recording = False
+            self.stop_recording_event.set()
             self.status_var.set("Transcribing for typing...")
         elif key == keyboard.Key.alt_r and self.gemini_recording:
             print("Right Alt released. Stopping recording for Gemini...")
-            self.gemini_recording = False
+            self.stop_recording_event.set()
             self.status_var.set("Transcribing for Gemini...")
 
     def record_audio(self, is_gemini):
         print(f"Recording audio for {'Gemini' if is_gemini else 'typing'}...")
         with sd.InputStream(samplerate=16000, channels=1, callback=self.audio_callback):
-            if is_gemini:
-                while self.gemini_recording:
-                    sd.sleep(100)
-            else:
-                while self.recording:
-                    sd.sleep(100)
+            self.stop_recording_event.wait()
         print("Recording stopped. Processing audio...")
         self.process_audio(is_gemini)
+        if is_gemini:
+            self.gemini_recording = False
+        else:
+            self.recording = False
 
     def audio_callback(self, indata, frames, time, status):
         if status:
@@ -384,11 +388,20 @@ class VoiceTranscriber(ThemedTk):
                         if is_gemini:
                             self.gemini_ui.show_question(transcribed_text)
                             print("Sending transcription to Gemini...")
-                            gemini_response = get_gemini_response_from_api(
-                                transcribed_text, 
-                                GEMINI_API_KEY, 
-                                self.mcp_tools
+
+                            messages_to_send = None
+                            if self.gemini_ui.continue_conversation_var.get():
+                                messages_to_send = self.conversation_history
+                            else:
+                                self.conversation_history = None
+
+                            gemini_response, updated_messages = get_gemini_response_from_api(
+                                transcribed_text,
+                                GEMINI_API_KEY,
+                                USER_EMAIL,
+                                messages=messages_to_send
                             )
+                            self.conversation_history = updated_messages
                             self.gemini_ui.show_response(gemini_response)
                         else:
                             print("Typing out transcription...")

@@ -1,56 +1,51 @@
-import requests
 import os
-import copy
+import json
 from litellm import completion
+import datetime
+from tools.google_tools import get_tools, get_available_functions, load_google_creds
 
-
-# def get_gemini_response(text, api_key, mcp_tools=None):
-#     """
-#     Sends a request to the Gemini API and returns the response.
-#     """
-#     if not api_key:
-#         return "GEMINI_API_KEY not set."
-
-#     headers = {
-#         "x-goog-api-key": api_key,
-#         "Content-Type": "application/json",
-#     }
-    
-#     data = {
-#         "contents": [{"parts": [{"text": text}]}],
-#         "generationConfig": {"thinkingConfig": {"thinkingBudget": 0}},
-#     }
-
-#     try:
-#         response = requests.post(
-#             "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent",
-#             headers=headers,
-#             json=data
-#         )
-#         if response.status_code == 200:
-#             result = response.json()
-#             # TODO: Handle tool calls in the response
-#             return result['candidates'][0]['content']['parts'][0]['text']
-#         else:
-#             # Return the full error from the API for better debugging
-#             return f"Gemini API error: {response.status_code} - {response.text}"
-#     except Exception as e:
-#         return f"Error: {e}"
-
-def get_gemini_response(text, api_key, mcp_tools=None):
+def get_gemini_response(text, api_key, email, messages=None):
     os.environ['GEMINI_API_KEY'] = api_key
-    tools = []
-    # mcp_tools is a dict of tool name to tool config
-    if mcp_tools:
-        for tool_name, tool_config in mcp_tools.items():
-            tools.extend(tool_config)
-    resp = completion(
-        model="gemini/gemini-2.5-flash",
-        messages=[{"role": "user", "content": "Get the latest JIRA Ticket of CEO Project with project key CEO and summarize it."}],
-        reasoning_effort="low",
-        tools=tools
-    )
-    print("Gemini Response:", resp )
-    return resp['choices'][0]['message']['content']
+    creds = load_google_creds(email)
+    if not creds:
+        return "Could not load Google credentials. Please check your configuration.", None
 
+    if messages is None:
+        messages = [{"role": "system", "content": f"Today date is {datetime.datetime.now().strftime('%d %b %Y')} and time is {datetime.datetime.now().strftime('%H:%M:%S')}. You answer everything not just google services. use google services only if you dont know something or want to do something. You are a helpful assistant who does things without asking many questions.  Always use the tools when you need to get information or perform actions related to Google services. If you don't know the answer, use the tools to find out. Be concise and to the point."}]
+    
+    messages.append({"role": "user", "content": text})
+    
+    tools = get_tools()
+    available_functions = get_available_functions()
 
+    while True:
+        resp = completion(
+            model="gemini/gemini-2.5-flash",
+            messages=messages,
+            tools=tools
+        )
+
+        choice = resp.choices[0]
+        if choice.finish_reason == "tool_calls":
+            tool_calls = choice.message.tool_calls
+            messages.append(choice.message) # Add the assistant's message with tool calls to the history
+            for tool_call in tool_calls:
+                function_name = tool_call.function.name
+                function_to_call = available_functions[function_name]
+                function_args = json.loads(tool_call.function.arguments)
+                
+                # Add credentials to the arguments
+                if function_name in ["get_events_by_datetime_range", "list_drive_files", "get_files_by_name", "get_unread_emails", "create_file", "get_latest_emails"]:
+                    function_args['creds'] = creds
+                
+                function_response = function_to_call(**function_args)
+                
+                messages.append({
+                    "tool_call_id": tool_call.id,
+                    "role": "tool",
+                    "name": function_name,
+                    "content": json.dumps(function_response),
+                })
+        else:
+            messages.append(choice.message)
+            return choice.message.content, messages
