@@ -384,7 +384,11 @@ class VoiceTranscriber(ThemedTk):
                         if is_gemini:
                             self.gemini_ui.show_question(transcribed_text)
                             print("Sending transcription to Gemini...")
-                            gemini_response = get_gemini_response_from_api(transcribed_text, GEMINI_API_KEY)
+                            gemini_response = get_gemini_response_from_api(
+                                transcribed_text, 
+                                GEMINI_API_KEY, 
+                                self.mcp_tools
+                            )
                             self.gemini_ui.show_response(gemini_response)
                         else:
                             print("Typing out transcription...")

@@ -5,6 +5,7 @@ from contextlib import AsyncExitStack
 
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
+from litellm import experimental_mcp_client
 
 # Assuming mcp.config.json is in the same directory as this script
 MCP_CONFIG_PATH = os.path.join(os.path.dirname(__file__), 'mcp.config.json')
@@ -74,15 +75,25 @@ class MCPClientManager:
 
         for name, session in self.sessions.items():
             tool_list = []
+            litellm_tools = []
             try:
                 tools_response = await session.list_tools()
+                tools_litellm = await experimental_mcp_client.load_mcp_tools(
+                    session=session,
+                    format="openai"
+                )
+                litellm_tools.extend(tools_litellm)
                 if tools_response and tools_response.tools:
                     for tool in tools_response.tools:
-                        tool_list.append({"name": tool.name, "description": tool.description})
+                        tool_list.append({
+                            "name": tool.name,
+                            "description": tool.description,
+                            "parameters": tool.inputSchema
+                        })
             except Exception as e:
                 print(f"Failed to list tools for '{name}': {e}")
 
-            all_tools[name] = tool_list
+            all_tools[name] = litellm_tools
         return all_tools
 
     async def stop_sessions(self):
