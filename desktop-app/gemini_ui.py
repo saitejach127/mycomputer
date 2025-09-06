@@ -5,7 +5,20 @@ class GeminiUI(tk.Toplevel):
     def __init__(self, parent):
         super().__init__(parent)
         self.title("Gemini Response")
-        self.geometry("400x300+1200+30")  # Position top-right
+        
+        # Set window dimensions
+        window_width = 400
+        window_height = 300
+
+        # Get screen dimensions
+        screen_width = self.winfo_screenwidth()
+        screen_height = self.winfo_screenheight()
+
+        # Calculate position for bottom-right corner
+        x_position = screen_width - window_width
+        y_position = screen_height - window_height - 100 # A little bit of padding from bottom
+
+        self.geometry(f"{window_width}x{window_height}+{x_position}+{y_position}")
 
         self.attributes("-alpha", 0.5)
         self.attributes("-topmost", True)
