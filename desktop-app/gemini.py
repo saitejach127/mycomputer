@@ -2,55 +2,90 @@ import requests
 import os
 import copy
 from litellm import completion
+import asyncio
+import json
 
-
-# def get_gemini_response(text, api_key, mcp_tools=None):
-#     """
-#     Sends a request to the Gemini API and returns the response.
-#     """
-#     if not api_key:
-#         return "GEMINI_API_KEY not set."
-
-#     headers = {
-#         "x-goog-api-key": api_key,
-#         "Content-Type": "application/json",
-#     }
-    
-#     data = {
-#         "contents": [{"parts": [{"text": text}]}],
-#         "generationConfig": {"thinkingConfig": {"thinkingBudget": 0}},
-#     }
-
-#     try:
-#         response = requests.post(
-#             "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent",
-#             headers=headers,
-#             json=data
-#         )
-#         if response.status_code == 200:
-#             result = response.json()
-#             # TODO: Handle tool calls in the response
-#             return result['candidates'][0]['content']['parts'][0]['text']
-#         else:
-#             # Return the full error from the API for better debugging
-#             return f"Gemini API error: {response.status_code} - {response.text}"
-#     except Exception as e:
-#         return f"Error: {e}"
-
-def get_gemini_response(text, api_key, mcp_tools=None):
+def get_gemini_response(text, api_key, mcp_tools=None, mcp_manager=None):
     os.environ['GEMINI_API_KEY'] = api_key
+    
     tools = []
-    # mcp_tools is a dict of tool name to tool config
-    if mcp_tools:
-        for tool_name, tool_config in mcp_tools.items():
+    tool_to_session_map = {}
+    tool_to_server_map = {}
+
+    if mcp_tools and mcp_manager:
+        for server_name, tool_config in mcp_tools.items():
             tools.extend(tool_config)
+            session = mcp_manager.sessions.get(server_name)
+            if session:
+                for tool in tool_config:
+                    tool_name = tool.get('function', {}).get('name')
+                    if tool_name:
+                        tool_to_session_map[tool_name] = session
+                        tool_to_server_map[tool_name] = server_name
+
+    messages=[{"role": "user", "content": text}]
+
     resp = completion(
         model="gemini/gemini-2.5-flash",
-        messages=[{"role": "user", "content": "Get the latest JIRA Ticket of CEO Project with project key CEO and summarize it."}],
-        reasoning_effort="low",
+        messages=messages,
         tools=tools
     )
-    print("Gemini Response:", resp )
+    # print("Initial response:", resp )
+    if resp.choices[0].message.tool_calls:
+        tool_calls = resp.choices[0].message.tool_calls
+        
+        async def process_tool_calls():
+            tool_responses = []
+            for tool_call in tool_calls:
+                tool_name = tool_call.function.name
+                tool_args = json.loads(tool_call.function.arguments)
+                print(f"Calling tool: {tool_name} with args: {tool_args}")
+                
+                session = tool_to_session_map.get(tool_name)
+                if session:
+                    try:
+                        print(f"Starting tool call for {tool_name}")
+                        result = await asyncio.wait_for(session.call_tool(tool_name, tool_args), timeout=30.0)
+                        print(f"Done tool call for {tool_name}")
+                        tool_responses.append({
+                            "tool_call_id": tool_call.id,
+                            "role": "tool",
+                            "name": tool_name,
+                            "content": result.response,
+                        })
+                    except asyncio.TimeoutError:
+                        print(f"ERROR: Timeout calling tool {tool_name}")
+                        tool_responses.append({
+                            "tool_call_id": tool_call.id,
+                            "role": "tool",
+                            "name": tool_name,
+                            "content": f"Error: Timeout calling tool {tool_name}",
+                        })
+                    except Exception as e:
+                        print(f"ERROR: calling tool {tool_name}: {e}")
+                        tool_responses.append({
+                            "tool_call_id": tool_call.id,
+                            "role": "tool",
+                            "name": tool_name,
+                            "content": f"Error calling tool: {e}",
+                        })
+            return tool_responses
+
+        try:
+            tool_outputs = asyncio.run(process_tool_calls())
+        except Exception as e:
+            print(f"ERROR: processing tool calls: {e}")
+            tool_outputs = []
+        
+        messages.append(resp.choices[0].message)
+        messages.extend(tool_outputs)
+        print("Messages after tool calls:", messages )
+        resp = completion(
+            model="gemini/gemini-2.5-flash",
+            messages=messages,
+            tools=tools
+        )
+        # print("Final response after tool calls:", resp )
     return resp['choices'][0]['message']['content']
 
 

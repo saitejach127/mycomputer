@@ -387,7 +387,8 @@ class VoiceTranscriber(ThemedTk):
                             gemini_response = get_gemini_response_from_api(
                                 transcribed_text, 
                                 GEMINI_API_KEY, 
-                                self.mcp_tools
+                                self.mcp_tools,
+                                self.mcp_manager,
                             )
                             self.gemini_ui.show_response(gemini_response)
                         else:
