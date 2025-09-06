@@ -2,12 +2,12 @@ import tkinter as tk
 from tkinter import ttk
 import sounddevice as sd
 import soundfile as sf
-import requests
 import threading
 from pynput import keyboard
 import queue
 import os
 from datetime import datetime, timedelta
+import whisper
 
 from ttkthemes import ThemedTk
 
@@ -34,7 +34,6 @@ def load_env(env_path=".env"):
     return env_vars
 
 ENV_VARS = load_env()
-SERVER_URL = ENV_VARS.get("SERVER_URL", "http://localhost:5001/transcribe")
 GEMINI_API_KEY = ENV_VARS.get("GEMINI_API_KEY")
 USER_EMAIL = ENV_VARS.get("USER_EMAIL")
 
@@ -103,6 +102,10 @@ class VoiceTranscriber(ThemedTk):
         self.mcp_tools = None
         self.conversation_history = None
         self.stop_recording_event = threading.Event()
+        
+        print("Loading whisper model...")
+        self.whisper_model = whisper.load_model("base")
+        print("Whisper model loaded.")
 
         def on_closing():
             print("Stopping MCP sessions...")
@@ -375,42 +378,34 @@ class VoiceTranscriber(ThemedTk):
     def transcribe_audio(self, is_gemini):
         print(f"Transcribing audio for {'Gemini' if is_gemini else 'typing'}...")
         try:
-            with open("temp_audio.wav", 'rb') as f:
-                files = {'audio': f}
-                response = requests.post(SERVER_URL, files=files)
-                print(f"Transcription server response: {response.status_code}")
-                if response.status_code == 200:
-                    result = response.json()
-                    transcribed_text = result.get('transcription', '')
-                    print(f"Transcription result: {transcribed_text}")
-                    self.transcription_var.set(transcribed_text)
-                    if transcribed_text:
-                        if is_gemini:
-                            self.gemini_ui.show_question(transcribed_text)
-                            print("Sending transcription to Gemini...")
+            result = self.whisper_model.transcribe("temp_audio.wav")
+            transcribed_text = result["text"]
+            print(f"Transcription result: {transcribed_text}")
+            self.transcription_var.set(transcribed_text)
+            if transcribed_text:
+                if is_gemini:
+                    self.gemini_ui.show_question(transcribed_text)
+                    print("Sending transcription to Gemini...")
 
-                            messages_to_send = None
-                            if self.gemini_ui.continue_conversation_var.get():
-                                messages_to_send = self.conversation_history
-                            else:
-                                self.conversation_history = None
+                    messages_to_send = None
+                    if self.gemini_ui.continue_conversation_var.get():
+                        messages_to_send = self.conversation_history
+                    else:
+                        self.conversation_history = None
 
-                            gemini_response, updated_messages = get_gemini_response_from_api(
-                                transcribed_text,
-                                GEMINI_API_KEY,
-                                USER_EMAIL,
-                                messages=messages_to_send
-                            )
-                            self.conversation_history = updated_messages
-                            self.gemini_ui.show_response(gemini_response)
-                        else:
-                            print("Typing out transcription...")
-                            self.keyboard_controller.type(transcribed_text)
-                            db.add_transcription(transcribed_text)
-                            self.update_home_tab()
+                    gemini_response, updated_messages = get_gemini_response_from_api(
+                        transcribed_text,
+                        GEMINI_API_KEY,
+                        USER_EMAIL,
+                        messages=messages_to_send
+                    )
+                    self.conversation_history = updated_messages
+                    self.gemini_ui.show_response(gemini_response)
                 else:
-                    print(f"Transcription error: {response.text}")
-                    self.status_var.set(f"Error: {response.status_code} - {response.text}")
+                    print("Typing out transcription...")
+                    self.keyboard_controller.type(transcribed_text)
+                    db.add_transcription(transcribed_text)
+                    self.update_home_tab()
         except Exception as e:
             print(f"An exception occurred during transcription: {e}")
             self.status_var.set(f"Error: {e}")
