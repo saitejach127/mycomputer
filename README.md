@@ -1,4 +1,4 @@
-# Wispr Clone
+# MyComputer
 
 This project is a desktop application that allows you to record your voice with a global hotkey and get a transcription. The transcription is then automatically typed into your currently focused text field.
 
@@ -59,13 +59,13 @@ Navigate to the `server` directory and run:
 
 ```bash
 cd server
-docker build -t wispr-flow-clone-server .
+docker build -t mycomputer-server .
 ```
 
 **Run the Docker Container:**
 
 ```bash
-docker run -d -p 5001:5000 -e MODEL_SIZE=base wispr-flow-clone-server
+docker run -d -p 5001:5000 -e MODEL_SIZE=base mycomputer-server
 ```
 
 ### 4. Set Up and Run the Desktop Application
@@ -73,8 +73,8 @@ docker run -d -p 5001:5000 -e MODEL_SIZE=base wispr-flow-clone-server
 **Create the Conda Environment:**
 
 ```bash
-conda create --name wispr-clone python=3.9 -y
-conda activate wispr-clone
+conda create --name mycomputer python=3.9 -y
+conda activate mycomputer
 ```
 
 **Install Dependencies:**
