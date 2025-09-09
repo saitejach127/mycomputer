@@ -2,7 +2,7 @@ import os
 import json
 from litellm import completion
 import datetime
-from tools.google_tools import get_tools, get_available_functions, load_google_creds
+from tools.tools import get_tools, get_available_functions, load_google_creds
 
 def get_gemini_response(text, api_key, email, messages=None):
     os.environ['GEMINI_API_KEY'] = api_key

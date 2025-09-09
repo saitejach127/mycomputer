@@ -19,6 +19,8 @@ from gemini import get_gemini_response as get_gemini_response_from_api
 from mcp_impl import MCPClientManager
 import asyncio
 import json
+from waveform_ui import WaveformUI
+
 
 def load_env(env_path=".env"):
     print("Loading environment variables...")
@@ -50,7 +52,11 @@ class VoiceTranscriber(ThemedTk):
 
         # --- Gemini UI ---
         print("Initializing Gemini UI...")
-        self.gemini_ui = GeminiUI(self)
+        self.gemini_ui = GeminiUI(self, self.send_text_to_gemini)
+
+        # --- Waveform UI ---
+        print("Initializing Waveform UI...")
+        self.waveform_ui = WaveformUI(self, height=50, bg='black', corner_radius=20)
 
         # --- Navbar ---
         print("Creating Navbar...")
@@ -228,7 +234,7 @@ class VoiceTranscriber(ThemedTk):
         loop.run_until_complete(self.mcp_manager.start_sessions())
         tools = loop.run_until_complete(self.mcp_manager.list_all_tools())
         
-        print("--- All MCP Tools Loaded ---")
+        print("---" + " All MCP Tools Loaded " + "---")
         print(json.dumps(tools, indent=2))
         print("--------------------------")
 
@@ -316,6 +322,7 @@ class VoiceTranscriber(ThemedTk):
         if key == keyboard.Key.alt_l and not self.recording:
             print("Left Alt pressed. Starting recording for typing...")
             self.recording = True
+            self.waveform_ui.show()
             self.status_var.set("Recording for typing...")
             self.transcription_var.set("")
             self.audio_queue = queue.Queue()
@@ -325,6 +332,7 @@ class VoiceTranscriber(ThemedTk):
         elif key == keyboard.Key.alt_r and not self.gemini_recording:
             print("Right Alt pressed. Starting recording for Gemini...")
             self.gemini_recording = True
+            self.waveform_ui.show()
             self.status_var.set("Recording for Gemini...")
             self.transcription_var.set("")
             self.audio_queue = queue.Queue()
@@ -336,14 +344,16 @@ class VoiceTranscriber(ThemedTk):
         if key == keyboard.Key.alt_l and self.recording:
             print("Left Alt released. Stopping recording for typing...")
             self.stop_recording_event.set()
+            self.waveform_ui.hide()
             self.status_var.set("Transcribing for typing...")
         elif key == keyboard.Key.alt_r and self.gemini_recording:
             print("Right Alt released. Stopping recording for Gemini...")
             self.stop_recording_event.set()
+            self.waveform_ui.hide()
             self.status_var.set("Transcribing for Gemini...")
 
     def record_audio(self, is_gemini):
-        print(f"Recording audio for {'Gemini' if is_gemini else 'typing'}...")
+        print(f"Recording audio for {"Gemini" if is_gemini else "typing"}...")
         with sd.InputStream(samplerate=16000, channels=1, callback=self.audio_callback):
             self.stop_recording_event.wait()
         print("Recording stopped. Processing audio...")
@@ -357,6 +367,7 @@ class VoiceTranscriber(ThemedTk):
         if status:
             print(f"Audio callback status: {status}")
         self.audio_queue.put(indata.copy())
+        self.waveform_ui.update_waveform(indata)
 
     def process_audio(self, is_gemini):
         print("Processing audio data...")
@@ -376,7 +387,7 @@ class VoiceTranscriber(ThemedTk):
         self.transcribe_audio(is_gemini)
 
     def transcribe_audio(self, is_gemini):
-        print(f"Transcribing audio for {'Gemini' if is_gemini else 'typing'}...")
+        print(f"Transcribing audio for {"Gemini" if is_gemini else "typing"}...")
         try:
             result = self.whisper_model.transcribe("temp_audio.wav")
             transcribed_text = result["text"]
@@ -384,23 +395,7 @@ class VoiceTranscriber(ThemedTk):
             self.transcription_var.set(transcribed_text)
             if transcribed_text:
                 if is_gemini:
-                    self.gemini_ui.show_question(transcribed_text)
-                    print("Sending transcription to Gemini...")
-
-                    messages_to_send = None
-                    if self.gemini_ui.continue_conversation_var.get():
-                        messages_to_send = self.conversation_history
-                    else:
-                        self.conversation_history = None
-
-                    gemini_response, updated_messages = get_gemini_response_from_api(
-                        transcribed_text,
-                        GEMINI_API_KEY,
-                        USER_EMAIL,
-                        messages=messages_to_send
-                    )
-                    self.conversation_history = updated_messages
-                    self.gemini_ui.show_response(gemini_response)
+                    self.send_text_to_gemini(transcribed_text)
                 else:
                     print("Typing out transcription...")
                     self.keyboard_controller.type(transcribed_text)
@@ -411,6 +406,25 @@ class VoiceTranscriber(ThemedTk):
             self.status_var.set(f"Error: {e}")
         finally:
             self.status_var.set("Press and hold Left Option to type | Right Option for AI")
+
+    def send_text_to_gemini(self, text):
+        print("Sending text to Gemini...")
+        self.gemini_ui.show_question(text)
+
+        messages_to_send = None
+        if self.gemini_ui.continue_conversation_var.get():
+            messages_to_send = self.conversation_history
+        else:
+            self.conversation_history = None
+
+        gemini_response, updated_messages = get_gemini_response_from_api(
+            text,
+            GEMINI_API_KEY,
+            USER_EMAIL,
+            messages=messages_to_send
+        )
+        self.conversation_history = updated_messages
+        self.gemini_ui.show_response(gemini_response)
 
 
 if __name__ == "__main__":

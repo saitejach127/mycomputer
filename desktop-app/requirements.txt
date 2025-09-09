@@ -12,3 +12,5 @@ openai-whisper
 torch
 torchaudio
 ffmpeg
+jira
+python-dotenv
