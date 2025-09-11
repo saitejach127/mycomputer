@@ -14,3 +14,4 @@ torchaudio
 ffmpeg
 jira
 python-dotenv
+nemo_toolkit[asr]

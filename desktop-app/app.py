@@ -7,8 +7,8 @@ from pynput import keyboard
 import queue
 import os
 from datetime import datetime, timedelta
-import whisper
-
+# import whisper
+import nemo.collections.asr as nemo_asr
 from ttkthemes import ThemedTk
 
 import db
@@ -19,7 +19,7 @@ from gemini import get_gemini_response as get_gemini_response_from_api
 from mcp_impl import MCPClientManager
 import asyncio
 import json
-from waveform_ui import WaveformUI
+
 
 
 def load_env(env_path=".env"):
@@ -54,9 +54,7 @@ class VoiceTranscriber(ThemedTk):
         print("Initializing Gemini UI...")
         self.gemini_ui = GeminiUI(self, self.send_text_to_gemini)
 
-        # --- Waveform UI ---
-        print("Initializing Waveform UI...")
-        self.waveform_ui = WaveformUI(self, height=50, bg='black', corner_radius=20)
+        
 
         # --- Navbar ---
         print("Creating Navbar...")
@@ -110,7 +108,8 @@ class VoiceTranscriber(ThemedTk):
         self.stop_recording_event = threading.Event()
         
         print("Loading whisper model...")
-        self.whisper_model = whisper.load_model("base")
+        # self.whisper_model = whisper.load_model("base")
+        self.asr_model = nemo_asr.models.ASRModel.from_pretrained(model_name="nvidia/parakeet-tdt-0.6b-v3")
         print("Whisper model loaded.")
 
         def on_closing():
@@ -322,7 +321,7 @@ class VoiceTranscriber(ThemedTk):
         if key == keyboard.Key.alt_l and not self.recording:
             print("Left Alt pressed. Starting recording for typing...")
             self.recording = True
-            self.waveform_ui.show()
+            
             self.status_var.set("Recording for typing...")
             self.transcription_var.set("")
             self.audio_queue = queue.Queue()
@@ -332,7 +331,7 @@ class VoiceTranscriber(ThemedTk):
         elif key == keyboard.Key.alt_r and not self.gemini_recording:
             print("Right Alt pressed. Starting recording for Gemini...")
             self.gemini_recording = True
-            self.waveform_ui.show()
+            
             self.status_var.set("Recording for Gemini...")
             self.transcription_var.set("")
             self.audio_queue = queue.Queue()
@@ -344,12 +343,12 @@ class VoiceTranscriber(ThemedTk):
         if key == keyboard.Key.alt_l and self.recording:
             print("Left Alt released. Stopping recording for typing...")
             self.stop_recording_event.set()
-            self.waveform_ui.hide()
+            
             self.status_var.set("Transcribing for typing...")
         elif key == keyboard.Key.alt_r and self.gemini_recording:
             print("Right Alt released. Stopping recording for Gemini...")
             self.stop_recording_event.set()
-            self.waveform_ui.hide()
+            
             self.status_var.set("Transcribing for Gemini...")
 
     def record_audio(self, is_gemini):
@@ -367,7 +366,7 @@ class VoiceTranscriber(ThemedTk):
         if status:
             print(f"Audio callback status: {status}")
         self.audio_queue.put(indata.copy())
-        self.waveform_ui.update_waveform(indata)
+        
 
     def process_audio(self, is_gemini):
         print("Processing audio data...")
@@ -389,8 +388,10 @@ class VoiceTranscriber(ThemedTk):
     def transcribe_audio(self, is_gemini):
         print(f"Transcribing audio for {"Gemini" if is_gemini else "typing"}...")
         try:
-            result = self.whisper_model.transcribe("temp_audio.wav")
-            transcribed_text = result["text"]
+            # result = self.whisper_model.transcribe("temp_audio.wav")
+            # transcribed_text = result["text"]
+            result = self.asr_model.transcribe(["temp_audio.wav"], timestamps=False)
+            transcribed_text = (result[0].text if result and result[0] and hasattr(result[0], "text") else "No text transcribed").strip()
             print(f"Transcription result: {transcribed_text}")
             self.transcription_var.set(transcribed_text)
             if transcribed_text:

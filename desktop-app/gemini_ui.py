@@ -21,7 +21,7 @@ class GeminiUI(tk.Toplevel):
 
         self.geometry(f"{window_width}x{window_height}+{x_position}+{y_position}")
 
-        self.attributes("-alpha", 0.9)
+        self.attributes("-alpha", 0.5)
         self.attributes("-topmost", True)
 
         self.grid_rowconfigure(3, weight=1)
