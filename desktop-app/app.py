@@ -19,7 +19,7 @@ from gemini import get_gemini_response as get_gemini_response_from_api
 from mcp_impl import MCPClientManager
 import asyncio
 import json
-
+from litellm import completion
 
 
 def load_env(env_path=".env"):
@@ -76,6 +76,10 @@ class VoiceTranscriber(ThemedTk):
         self.integrations_button = ttk.Button(self.navbar_frame, text="Integrations", command=self.show_integrations)
         self.integrations_button.pack(pady=10, padx=10, fill="x")
 
+        # --- App State Vars for Home Frame ---
+        self.enable_ai_enhancement = tk.BooleanVar(value=True)
+        self.system_prompt_var = tk.StringVar(value="Correct the grammar in the below sentence and return the corrected sentence only")
+
         # --- Content Frames ---
         print("Creating Content Frames...")
         self.content_frame = ttk.Frame(self)
@@ -104,7 +108,7 @@ class VoiceTranscriber(ThemedTk):
 
         self.mcp_manager = MCPClientManager()
         self.mcp_tools = None
-        self.conversation_history = None
+        self.conversation_history = []
         self.stop_recording_event = threading.Event()
         
         print("Loading whisper model...")
@@ -149,6 +153,22 @@ class VoiceTranscriber(ThemedTk):
         self.transcription_var = tk.StringVar()
         transcription_label = ttk.Label(self.last_transcriptions_frame, textvariable=self.transcription_var, wraplength=380, foreground="blue")
         transcription_label.pack(pady=5)
+
+        ai_enhancement_frame = ttk.Frame(self.last_transcriptions_frame)
+        ai_enhancement_frame.pack(fill="x", padx=5, pady=10)
+
+        self.ai_enhancement_checkbox = ttk.Checkbutton(
+            ai_enhancement_frame,
+            text="Enable AI Enhancement",
+            variable=self.enable_ai_enhancement
+        )
+        self.ai_enhancement_checkbox.pack(anchor="w")
+
+        self.system_prompt_entry = ttk.Entry(
+            ai_enhancement_frame,
+            textvariable=self.system_prompt_var,
+        )
+        self.system_prompt_entry.pack(fill="x", expand=True, pady=5)
         
         return frame
 
@@ -388,20 +408,52 @@ class VoiceTranscriber(ThemedTk):
     def transcribe_audio(self, is_gemini):
         print(f"Transcribing audio for {"Gemini" if is_gemini else "typing"}...")
         try:
-            # result = self.whisper_model.transcribe("temp_audio.wav")
-            # transcribed_text = result["text"]
             result = self.asr_model.transcribe(["temp_audio.wav"], timestamps=False)
             transcribed_text = (result[0].text if result and result[0] and hasattr(result[0], "text") else "No text transcribed").strip()
-            print(f"Transcription result: {transcribed_text}")
-            self.transcription_var.set(transcribed_text)
-            if transcribed_text:
-                if is_gemini:
+
+            if not transcribed_text:
+                print("No text transcribed.")
+                self.status_var.set("No audio recorded. Press and hold an Option key...")
+                return
+            if is_gemini:
+                self.transcription_var.set(transcribed_text)
+                if transcribed_text:
                     self.send_text_to_gemini(transcribed_text)
-                else:
-                    print("Typing out transcription...")
-                    self.keyboard_controller.type(transcribed_text)
-                    db.add_transcription(transcribed_text)
-                    self.update_home_tab()
+            else:
+                if self.enable_ai_enhancement.get():
+                    messages = [{"role": "system", "content": self.system_prompt_var.get()},
+                                {"role": "user", "content": transcribed_text}]
+                    
+                    resp = completion(
+                        model="gemini/gemini-2.5-flash-lite",
+                        messages=messages,
+                        stream=True
+                    )
+                    print("Typing out AI enhanced transcription...")
+                    full_corrected_text = ""
+                    for chunk in resp:
+                        content = chunk.choices[0].delta.content
+                        if content:
+                            self.keyboard_controller.type(content)
+                            full_corrected_text += content
+                    
+                    final_text = full_corrected_text.strip()
+                    self.transcription_var.set(final_text)
+                    if final_text:
+                        db.add_transcription(final_text)
+                        self.update_home_tab()
+                else: # No AI enhancement
+                    final_text = transcribed_text
+                    self.transcription_var.set(final_text)
+                    if final_text:
+                        if is_gemini:
+                            self.send_text_to_gemini(final_text)
+                        else: # Typing mode without AI enhancement
+                            print("Typing out transcription...")
+                            self.keyboard_controller.type(final_text)
+                            db.add_transcription(final_text)
+                            self.update_home_tab()
+
         except Exception as e:
             print(f"An exception occurred during transcription: {e}")
             self.status_var.set(f"Error: {e}")
