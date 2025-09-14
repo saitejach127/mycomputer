@@ -78,7 +78,11 @@ class VoiceTranscriber(ThemedTk):
 
         # --- App State Vars for Home Frame ---
         self.enable_ai_enhancement = tk.BooleanVar(value=False)
-        self.system_prompt_var = tk.StringVar(value="Correct the grammar in the below sentence and return the corrected sentence only")
+        # self.system_prompt_var = tk.StringVar(value="Correct the grammar in the below sentence and return the corrected sentence only")
+
+        # read prompt.txt
+        with open("prompt_1.txt", "r") as f:
+            self.system_prompt_var = tk.StringVar(value=f.read())
 
         # --- Content Frames ---
         print("Creating Content Frames...")
