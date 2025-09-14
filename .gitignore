@@ -10,3 +10,10 @@ desktop-app/*.json
 auth-server/*.json
 *.pkl
 auth-server/google_credentials/*.json
+desktop-app/build
+desktop-app/dist
+*.dmg
+*.DS_Store
+*.egg-info
+*.egg
+*.log

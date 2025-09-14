@@ -8,7 +8,7 @@ import queue
 import os
 from datetime import datetime, timedelta
 # import whisper
-import nemo.collections.asr as nemo_asr
+from transformers import pipeline
 from ttkthemes import ThemedTk
 
 import db
@@ -77,7 +77,7 @@ class VoiceTranscriber(ThemedTk):
         self.integrations_button.pack(pady=10, padx=10, fill="x")
 
         # --- App State Vars for Home Frame ---
-        self.enable_ai_enhancement = tk.BooleanVar(value=True)
+        self.enable_ai_enhancement = tk.BooleanVar(value=False)
         self.system_prompt_var = tk.StringVar(value="Correct the grammar in the below sentence and return the corrected sentence only")
 
         # --- Content Frames ---
@@ -113,7 +113,7 @@ class VoiceTranscriber(ThemedTk):
         
         print("Loading whisper model...")
         # self.whisper_model = whisper.load_model("base")
-        self.asr_model = nemo_asr.models.ASRModel.from_pretrained(model_name="nvidia/parakeet-tdt-0.6b-v3")
+        self.asr_pipeline = pipeline("automatic-speech-recognition", model="distil-whisper/distil-large-v3.5")
         print("Whisper model loaded.")
 
         def on_closing():
@@ -408,8 +408,8 @@ class VoiceTranscriber(ThemedTk):
     def transcribe_audio(self, is_gemini):
         print(f"Transcribing audio for {"Gemini" if is_gemini else "typing"}...")
         try:
-            result = self.asr_model.transcribe(["temp_audio.wav"], timestamps=False)
-            transcribed_text = (result[0].text if result and result[0] and hasattr(result[0], "text") else "No text transcribed").strip()
+            result = self.asr_pipeline("temp_audio.wav")
+            transcribed_text = result["text"].strip()
 
             if not transcribed_text:
                 print("No text transcribed.")
